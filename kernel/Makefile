@@ -1,6 +1,8 @@
 TOOLCHAIN ?= /opt/mipsel-mti-elf
 CROSS_COMPILE ?= $(TOOLCHAIN)/bin/mipsel-mti-elf-
-CC := $(CROSS_COMPILE)gcc
+CCACHE ?=
+CCACHE_PREFIX := $(if $(CCACHE),$(CCACHE) )
+CC := $(CCACHE_PREFIX)$(CROSS_COMPILE)gcc
 LD := $(CROSS_COMPILE)ld
 AR := $(CROSS_COMPILE)ar
 NM := $(CROSS_COMPILE)nm
