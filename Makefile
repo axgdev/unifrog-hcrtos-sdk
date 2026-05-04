@@ -11,7 +11,7 @@ ifeq ($(filter --output-sync% -O%,$(MAKEFLAGS)),)
 MAKEFLAGS += --output-sync=target
 endif
 
-.PHONY: all check apply-open-source-patches kernel-check clean
+.PHONY: all check apply-open-source-patches unapply-open-source-patches kernel-check clean
 
 all: check
 
@@ -27,9 +27,21 @@ apply-open-source-patches:
 		fi; \
 	done
 
-kernel-check: apply-open-source-patches
+unapply-open-source-patches:
+	@for patch_file in $(shell printf '%s\n' $(OPEN_SOURCE_PATCHES) | sort -r); do \
+		if git apply --reverse --check "$$patch_file" >/dev/null 2>&1; then \
+			echo "  UNPATCH $$patch_file"; \
+			git apply --reverse "$$patch_file"; \
+		fi; \
+	done
+
+kernel-check:
+	@$(MAKE) --no-print-directory apply-open-source-patches
+	@status=0; \
 	$(MAKE) -C kernel check TOOLCHAIN=$(TOOLCHAIN) \
-		CROSS_COMPILE=$(CROSS_COMPILE) CCACHE=$(CCACHE) JOBS=$(JOBS)
+		CROSS_COMPILE=$(CROSS_COMPILE) CCACHE=$(CCACHE) JOBS=$(JOBS) || status=$$?; \
+	$(MAKE) --no-print-directory unapply-open-source-patches; \
+	exit $$status
 
 clean:
 	$(MAKE) -C kernel clean TOOLCHAIN=$(TOOLCHAIN) \
