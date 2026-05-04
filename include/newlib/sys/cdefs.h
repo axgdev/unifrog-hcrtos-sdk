@@ -233,6 +233,7 @@
 #define	__aligned(x)
 #define	__alloc_align(x)
 #define	__alloc_size(x)
+#define	__alloc_size2(x, y)
 #define	__section(x)
 #define	__weak_symbol
 #else
@@ -259,8 +260,10 @@
 #endif
 #if __GNUC_PREREQ__(4, 3) || __has_attribute(__alloc_size__)
 #define	__alloc_size(x)	__attribute__((__alloc_size__(x)))
+#define	__alloc_size2(x, y)	__attribute__((__alloc_size__(x, y)))
 #else
 #define	__alloc_size(x)
+#define	__alloc_size2(x, y)
 #endif
 #if __GNUC_PREREQ__(4, 9) || __has_attribute(__alloc_align__)
 #define	__alloc_align(x)	__attribute__((__alloc_align__(x)))
