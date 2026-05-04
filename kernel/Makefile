@@ -25,6 +25,11 @@ ARCH_CFLAGS ?= -march=$(MIPS_ARCH) -mtune=$(MIPS_TUNE)
 CFLAGS := -EL $(ARCH_CFLAGS) -Os -msoft-float -fsigned-char -W \
 	-ffunction-sections -fdata-sections -G0 \
 	-Wformat=2 \
+	-Wno-builtin-declaration-mismatch \
+	-Wno-cast-function-type \
+	-Wno-format-truncation \
+	-Wno-shift-negative-value \
+	-Wno-sign-compare \
 	-Wno-error=attributes \
 	-Wno-error=cast-function-type \
 	-Wno-error=builtin-declaration-mismatch \
@@ -48,6 +53,8 @@ CFLAGS := -EL $(ARCH_CFLAGS) -Os -msoft-float -fsigned-char -W \
 	-I../include/newlib \
 	-I../include \
 	-I../include/generated
+
+ASFLAGS := -Wa,--no-warn
 
 DTS_CPPFLAGS := \
 	-I$(SOURCE)/include \
@@ -105,7 +112,7 @@ $(FDT_OBJECT): $(DTB)
 $(BUILD)/%.o: $(SOURCE)/%.S
 	@echo "  AS      $<"
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -D__ASSEMBLY__ -MD -MP -c $< -o $@
+	$(CC) $(CFLAGS) $(ASFLAGS) -D__ASSEMBLY__ -MD -MP -c $< -o $@
 
 $(DTS_PRE): $(BOARD_DTS)
 	@echo "  CPP     $<"

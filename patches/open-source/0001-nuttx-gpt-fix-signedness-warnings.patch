@@ -1,0 +1,84 @@
+diff --git a/kernel/source/third_party/nuttx/fs/partition/fs_gpt.c b/kernel/source/third_party/nuttx/fs/partition/fs_gpt.c
+index 9586acb..1c4a9ec 100755
+--- a/kernel/source/third_party/nuttx/fs/partition/fs_gpt.c
++++ b/kernel/source/third_party/nuttx/fs/partition/fs_gpt.c
+@@ -270,6 +270,7 @@ static int gpt_header_is_valid(FAR struct partition_state_s *state,
+   uint32_t crc;
+   uint32_t origcrc;
+   blkcnt_t lastlba;
++  uint64_t lastlba_u;
+ 
+   /* Check the GPT header signature */
+ 
+@@ -309,14 +310,21 @@ static int gpt_header_is_valid(FAR struct partition_state_s *state,
+   /* Check the first_usable_lba and last_usable_lba are within the disk. */
+ 
+   lastlba = gpt_last_lba(state);
+-  if (le64toh(gpt->first_usable_lba) > lastlba)
++  if (lastlba < 0)
++    {
++      ferr("GPT: invalid disk size: %lld\n", lastlba);
++      return -EINVAL;
++    }
++
++  lastlba_u = (uint64_t)lastlba;
++  if (le64toh(gpt->first_usable_lba) > lastlba_u)
+     {
+       ferr("GPT: first_usable_lba incorrect: %lld > %lld\n",
+            le64toh(gpt->first_usable_lba), lastlba);
+       return -EINVAL;
+     }
+ 
+-  if (le64toh(gpt->last_usable_lba) > lastlba)
++  if (le64toh(gpt->last_usable_lba) > lastlba_u)
+     {
+       if (REG32_GET_FIELD2((uint32_t)&MSYSIO0 + 0x0, 16, 16) == 0x1600) {
+         ferr("GPT: last_usable_lba incorrect: %lld > %lld\n",
+@@ -327,7 +335,7 @@ static int gpt_header_is_valid(FAR struct partition_state_s *state,
+          * !note: 由于1512芯片在读取SD卡实际容量的时候会有误差, 所以这里假如LBA
+          *         差值在 10MB以内, 就视为正常
+          */
+-        if(le64toh(gpt->last_usable_lba) - lastlba > (10 * 1024 * 1024)){
++        if(le64toh(gpt->last_usable_lba) - lastlba_u > (10 * 1024 * 1024)){
+           ferr("GPT: last_usable_lba incorrect: %lld > %lld\n",
+               le64toh(gpt->last_usable_lba), lastlba);
+           return -EINVAL;
+@@ -356,10 +364,18 @@ static int gpt_header_is_valid(FAR struct partition_state_s *state,
+ static inline int gpt_pte_is_valid(FAR const struct gpt_entry_s *pte,
+                                    blkcnt_t lastlba)
+ {
++  uint64_t lastlba_u;
++
++  if (lastlba < 0)
++    {
++      return 0;
++    }
++
++  lastlba_u = (uint64_t)lastlba;
+   if (!memcmp(&pte->partition_type_guid, &g_null_guid,
+               sizeof(g_null_guid)) ||
+-      le64toh(pte->starting_lba) > lastlba ||
+-      le64toh(pte->ending_lba) > lastlba)
++      le64toh(pte->starting_lba) > lastlba_u ||
++      le64toh(pte->ending_lba) > lastlba_u)
+     {
+       return 0;
+     }
+@@ -370,7 +386,7 @@ static inline int gpt_pte_is_valid(FAR const struct gpt_entry_s *pte,
+ static void gpt_part_set_name(FAR struct gpt_entry_s *pte,
+                               FAR char *dest, size_t len)
+ {
+-  int i;
++  size_t i;
+ 
+   if (--len > GPT_PARTNAME_MAX_SIZE)
+     {
+@@ -414,7 +430,7 @@ int parse_gpt_partition(FAR struct partition_state_s *state,
+   FAR struct gpt_header_s *gpt;
+   FAR struct gpt_entry_s *ptes;
+   struct partition_s pentry;
+-  int nb_part;
++  size_t nb_part;
+   int count;
+   int ret;
+ 
