@@ -54,8 +54,6 @@ CFLAGS := -EL $(ARCH_CFLAGS) -Os -msoft-float -fsigned-char -W \
 	-I../include \
 	-I../include/generated
 
-ASFLAGS := -Wa,--no-warn
-
 DTS_CPPFLAGS := \
 	-I$(SOURCE)/include \
 	-I../include/hcrtos \
@@ -112,7 +110,7 @@ $(FDT_OBJECT): $(DTB)
 $(BUILD)/%.o: $(SOURCE)/%.S
 	@echo "  AS      $<"
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(ASFLAGS) -D__ASSEMBLY__ -MD -MP -c $< -o $@
+	$(CC) $(CFLAGS) -D__ASSEMBLY__ -MD -MP -c $< -o $@
 
 $(DTS_PRE): $(BOARD_DTS)
 	@echo "  CPP     $<"
