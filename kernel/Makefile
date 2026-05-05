@@ -37,7 +37,7 @@ BOARD_DTS ?= ../../board/hc15xx/common/dts/sf2000_min.dts
 DTS_INCLUDE ?= ../../dts/include
 DTS_PRE := $(BUILD)/sf2000_min.dts.tmp
 DTB := sf2000_min.dtb
-DTS_MODE_STAMP := $(BUILD)/sd-mode-$(SD_MODE).stamp
+DTS_MODE_STAMP := $(BUILD)/sd-mode.stamp
 KERNEL_ARCHIVE := ../lib/core/libkernel.a
 KERNEL_BUILTIN := $(BUILD)/built-in.o
 
@@ -115,7 +115,7 @@ DTCFLAGS := \
 KERNEL_OBJECTS := $(addprefix $(BUILD)/,$(addsuffix .o,$(basename $(KERNEL_SOURCES))))
 FDT_OBJECT := $(BUILD)/lib/fdt/fdt_api.o
 
-.PHONY: all check clean
+.PHONY: all check clean FORCE
 
 all: $(KERNEL_ARCHIVE)
 
@@ -142,14 +142,18 @@ $(BUILD)/%.o: $(SOURCE)/%.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -D__ASSEMBLY__ -MD -MP -c $< -o $@
 
-$(DTS_MODE_STAMP):
+$(DTS_MODE_STAMP): FORCE
 	@mkdir -p $(dir $@)
-	@printf '%s\n' \
+	@value=$$(printf '%s\n' \
 		"SD_MODE=$(SD_MODE)" \
 		"SD_BUS_WIDTH=$(SD_BUS_WIDTH)" \
 		"SD_CAP_HIGHSPEED=$(SD_CAP_HIGHSPEED)" \
 		"SD_CAP_UHS=$(SD_CAP_UHS)" \
-		"SD_NO_1V8=$(SD_NO_1V8)" > $@
+		"SD_NO_1V8=$(SD_NO_1V8)"); \
+	old=$$(cat $@ 2>/dev/null || true); \
+	if test "$$value" != "$$old"; then printf '%s\n' "$$value" > $@; fi
+
+FORCE:
 
 $(DTS_PRE): $(BOARD_DTS) $(DTS_MODE_STAMP)
 	@echo "  CPP     $<"
