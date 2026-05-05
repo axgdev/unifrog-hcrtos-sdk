@@ -19,16 +19,19 @@ SD_BUS_WIDTH := 1
 SD_CAP_HIGHSPEED := 0
 SD_CAP_UHS := 0
 SD_NO_1V8 := 1
+SD_EXPERIMENTAL := 0
 else ifeq ($(SD_MODE),wide)
 SD_BUS_WIDTH := 4
 SD_CAP_HIGHSPEED := 1
 SD_CAP_UHS := 0
 SD_NO_1V8 := 1
+SD_EXPERIMENTAL := 1
 else
 SD_BUS_WIDTH := 4
 SD_CAP_HIGHSPEED := 1
 SD_CAP_UHS := 1
 SD_NO_1V8 := 0
+SD_EXPERIMENTAL := 1
 endif
 
 BUILD := build
@@ -62,6 +65,7 @@ CFLAGS := -EL $(ARCH_CFLAGS) -Os -msoft-float -fsigned-char -W \
 	-Wno-error=int-conversion \
 	-D_FORTIFY_SOURCE=0 \
 	-D__HCRTOS__ \
+	-DUNIFROG_SD_EXPERIMENTAL=$(SD_EXPERIMENTAL) \
 	-I$(SOURCE)/include \
 	-I$(SOURCE)/include/uapi \
 	-I$(SOURCE)/freertos/include \

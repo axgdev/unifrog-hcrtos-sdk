@@ -22,9 +22,15 @@
 #include <kernel/list.h>
 #include <nuttx/wqueue.h>
 
+#ifndef UNIFROG_SD_EXPERIMENTAL
+#define UNIFROG_SD_EXPERIMENTAL 0
+#endif
+
 #define CONFIG_FILEUART_TX_BUF_SIZE 65536
-#define FILEUART_FLUSH_DELAY_TICKS 100
-#define FILEUART_SYNC_INTERVAL_BYTES (64 * 1024)
+#define FILEUART_FLUSH_DELAY_TICKS \
+	(UNIFROG_SD_EXPERIMENTAL ? 1000 : 100)
+#define FILEUART_SYNC_INTERVAL_BYTES \
+	(UNIFROG_SD_EXPERIMENTAL ? (256 * 1024) : (64 * 1024))
 
 struct fileuart_dev
 {
@@ -121,7 +127,7 @@ static void fileuart_flush_locked(void)
 
 		written = write(g_dev.fd, g_dev.tx_buf + g_dev.tx_rd, chunk);
 		if (written <= 0) {
-			fileuart_close_log_locked(1);
+			fileuart_close_log_locked(0);
 			return;
 		}
 		g_dev.tx_rd = (g_dev.tx_rd + (uint32_t)written) %
@@ -136,7 +142,7 @@ static void fileuart_flush_locked(void)
 		if (fsync(g_dev.fd) == 0)
 			g_dev.dirty_bytes = 0;
 		else
-			fileuart_close_log_locked(1);
+			fileuart_close_log_locked(0);
 	}
 }
 
