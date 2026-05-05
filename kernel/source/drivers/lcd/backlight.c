@@ -61,6 +61,23 @@ struct pwm_bl_data {
 
 static struct pwm_bl_data *pbldev = NULL;
 
+#define BOOT_TRACE_SDK_BACKLIGHT_PROBE_BEGIN 210u
+#define BOOT_TRACE_SDK_BACKLIGHT_DEFAULT_OFF 211u
+#define BOOT_TRACE_SDK_BACKLIGHT_PWM_DUTY 212u
+#define BOOT_TRACE_SDK_BACKLIGHT_GPIO_STATUS 213u
+#define BOOT_TRACE_SDK_BACKLIGHT_WRITE 214u
+
+extern void unifrog_boot_trace_mark(unsigned int event, unsigned int arg0,
+				    unsigned int arg1, unsigned int arg2)
+	__attribute__((weak));
+
+static void boot_trace_mark(unsigned int event, unsigned int arg0,
+			    unsigned int arg1, unsigned int arg2)
+{
+	if (unifrog_boot_trace_mark)
+		unifrog_boot_trace_mark(event, arg0, arg1, arg2);
+}
+
 static unsigned backlight_r05_mux(void)
 {
 	return ((volatile unsigned char *)&PINMUXR)[PINPAD_R05 - 64];
@@ -136,6 +153,9 @@ static int backlight_set_pwm_duty(u32 level)
 	ret_set = ioctl(fd, PWMIOC_SETCHARACTERISTICS, &info);
 	ret_start = ret_set == 0 ? ioctl(fd, PWMIOC_START, 0) : ret_set;
 	close(fd);
+	boot_trace_mark(BOOT_TRACE_SDK_BACKLIGHT_PWM_DUTY, level, duty_cycle,
+		((unsigned int)(ret_set & 0xffff) << 16) |
+		(unsigned int)(ret_start & 0xffff));
 	printf("unifrog backlight pwm level=%lu duty=%lu duty_ns=%lu period_ns=%lu polarity=%d mux_r05=%u ret_set=%d ret_start=%d\n",
 		(unsigned long)level,(unsigned long)duty_cycle,
 		(unsigned long)info.duty_ns,(unsigned long)info.period_ns,info.polarity,
@@ -158,6 +178,8 @@ static void backlight_set_gpio_status(char value)
 		else
 			lcd_gpio_set_output(pbldev->gpio_backlight.pad[i].padctl, pbldev->gpio_backlight.pad[i].active);
 	}
+	boot_trace_mark(BOOT_TRACE_SDK_BACKLIGHT_GPIO_STATUS, value,
+		pbldev->gpio_backlight.num, 0);
 	log_d("%s %d gpios=%ld value=%d\n",__func__,__LINE__,pbldev->gpio_backlight.num,value);
 }
 
@@ -213,6 +235,7 @@ static ssize_t backlight_write(struct file *filep, const char *buffer, size_t bu
 	level = (unsigned char)buffer[0];
 	if(backlight_apply_level(level) != 0)
 		return -EIO;
+	boot_trace_mark(BOOT_TRACE_SDK_BACKLIGHT_WRITE, level, pbldev->duty_cycle, 0);
 	printf("unifrog backlight write level=%lu current=%d\n",
 		(unsigned long)level,pbldev->duty_cycle);
 	return buflen;
@@ -249,6 +272,7 @@ static int backlight_probe(const char *node)
 		goto error;
 	}
 
+	boot_trace_mark(BOOT_TRACE_SDK_BACKLIGHT_PROBE_BEGIN, (unsigned int)np, 0, 0);
 	log_d("%s %d\n",__func__,__LINE__);
 	if(pbldev != NULL) return 0;
 
@@ -366,8 +390,11 @@ static int backlight_probe(const char *node)
 
 	pbldev->duty_cycle = pbldev->dft_brightness;
 	pbldev->lcd_default_off = fdt_property_read_bool(np, "default-off");
-	if(pbldev->lcd_default_off)
+	if(pbldev->lcd_default_off) {
+		boot_trace_mark(BOOT_TRACE_SDK_BACKLIGHT_DEFAULT_OFF,
+			pbldev->dft_brightness, pbldev->duty_cycle, 0);
 		goto backlight_register;
+	}
 
 	backlight_apply_level(pbldev->dft_brightness);
 

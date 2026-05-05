@@ -48,6 +48,23 @@ static const hcfb_palette_t default_palette = {
 
 static bool fb0_valid = false, fb1_valid = false;
 static int gma_dmba_update(struct hcfb_device *fbdev);
+
+#define BOOT_TRACE_SDK_FB_PROBE_BEGIN 240u
+#define BOOT_TRACE_SDK_FB_ALLOC_DONE 241u
+#define BOOT_TRACE_SDK_FB_REGISTER_DONE 242u
+#define BOOT_TRACE_SDK_FB_GMA_OFF 243u
+
+extern void unifrog_boot_trace_mark(unsigned int event, unsigned int arg0,
+				    unsigned int arg1, unsigned int arg2)
+	__attribute__((weak));
+
+static void boot_trace_mark(unsigned int event, unsigned int arg0,
+			    unsigned int arg1, unsigned int arg2)
+{
+	if (unifrog_boot_trace_mark)
+		unifrog_boot_trace_mark(event, arg0, arg1, arg2);
+}
+
 static void gma_set_mask(struct hcfb_device *fbdev)
 {
 	REG32_SET_FIELD2(fbdev->iobase + HC_GMA_MASK, 0, 1, 1);
@@ -1167,6 +1184,7 @@ static int hcfb_probe(const char *node, int id)
 	if (np < 0)
 		return 0;
 
+	boot_trace_mark(BOOT_TRACE_SDK_FB_PROBE_BEGIN, id, (unsigned int)np, 0);
 	if (fdt_get_property_u_32_index(np, "reg", 0, &iobase))
 		return 0;
 
@@ -1244,14 +1262,18 @@ static int hcfb_probe(const char *node, int id)
 	if (ret) {
 		goto err_fb;
 	}
+	boot_trace_mark(BOOT_TRACE_SDK_FB_ALLOC_DONE, id,
+		(unsigned int)info->fix.smem_len, (unsigned int)fbdev->fb_static_phys);
 
 	ret = register_framebuffer(info);
 	if (ret < 0) {
 		fb_err(info, "Failed to register framebuffer device: %d\n", ret);
 		goto err_hcfb;
 	}
+	boot_trace_mark(BOOT_TRACE_SDK_FB_REGISTER_DONE, id, (unsigned int)ret, 0);
 
 	gma_show_onoff(fbdev, false);
+	boot_trace_mark(BOOT_TRACE_SDK_FB_GMA_OFF, id, 0, 0);
 	if(id == 0)
 		fb0_valid = true;
 	else

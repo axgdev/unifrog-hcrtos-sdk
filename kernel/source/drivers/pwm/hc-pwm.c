@@ -19,6 +19,21 @@ struct hc_pwm_priv {
 	pwm_reg_t	*base;	
 };
 
+#define BOOT_TRACE_SDK_PWM_PROBE_BEGIN 200u
+#define BOOT_TRACE_SDK_PWM_PINMUX_ACTIVE 201u
+#define BOOT_TRACE_SDK_PWM_REGISTER_DONE 202u
+
+extern void unifrog_boot_trace_mark(unsigned int event, unsigned int arg0,
+				    unsigned int arg1, unsigned int arg2)
+	__attribute__((weak));
+
+static void boot_trace_mark(unsigned int event, unsigned int arg0,
+			    unsigned int arg1, unsigned int arg2)
+{
+	if (unifrog_boot_trace_mark)
+		unifrog_boot_trace_mark(event, arg0, arg1, arg2);
+}
+
 static int hc_pwm_setup(struct pwm_lowerhalf_s *dev)
 {
 	return 0;	
@@ -195,9 +210,11 @@ static struct pwm_lowerhalf_s *hc_pwminitialize(const char *node, int id)
 		return NULL;
 	}
 
+	boot_trace_mark(BOOT_TRACE_SDK_PWM_PROBE_BEGIN, id, (unsigned int)np, 0);
 	active_state = fdt_get_property_pinmux(np, "active");
 	if (active_state) {
 		pinmux_select_setting(active_state);
+		boot_trace_mark(BOOT_TRACE_SDK_PWM_PINMUX_ACTIVE, id, 0, 0);
 		free(active_state);
 	}
 
@@ -218,6 +235,7 @@ static int hc_pwm_probe(const char *node, int id)
 
 	priv = (struct hc_pwm_priv *)pwm;
 	ret = pwm_register(priv->path, pwm);
+	boot_trace_mark(BOOT_TRACE_SDK_PWM_REGISTER_DONE, id, (unsigned int)ret, 0);
 	if (ret < 0)
 		pwmerr("ERROR: pwm@%d register failed: %d\n", id, ret);
 

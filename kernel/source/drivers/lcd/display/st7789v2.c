@@ -119,6 +119,25 @@ static int st7789v2_detected_init = -1;
 static unsigned long st7789v2_detected_lcd_id;
 static unsigned long st7789v2_detected_aux_id;
 
+#define BOOT_TRACE_SDK_LCD_PROBE_BEGIN 220u
+#define BOOT_TRACE_SDK_LCD_DISPLAY_BEGIN 221u
+#define BOOT_TRACE_SDK_LCD_RESET_DONE 222u
+#define BOOT_TRACE_SDK_LCD_PANEL_PROBE_DONE 223u
+#define BOOT_TRACE_SDK_LCD_INIT_SEQ_DONE 224u
+#define BOOT_TRACE_SDK_LCD_DISPON 225u
+#define BOOT_TRACE_SDK_LCD_RGB_ON 226u
+
+extern void unifrog_boot_trace_mark(unsigned int event, unsigned int arg0,
+				    unsigned int arg1, unsigned int arg2)
+	__attribute__((weak));
+
+static void boot_trace_mark(unsigned int event, unsigned int arg0,
+			    unsigned int arg1, unsigned int arg2)
+{
+	if (unifrog_boot_trace_mark)
+		unifrog_boot_trace_mark(event, arg0, arg1, arg2);
+}
+
 static int st7789v2_rorate(lcd_rotate_type_e dir)
 {
 	unsigned char data = 0x0+0x10;
@@ -603,6 +622,7 @@ static int st7789v2_display_init(void)
 	int init_index = INIT_SF2000;
 	int ret;
 
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_DISPLAY_BEGIN, 0, 0, 0);
     lcd_pinmux_rgb(0);
     printf("%s %d\n", __FUNCTION__,__LINE__);
 
@@ -622,13 +642,21 @@ static int st7789v2_display_init(void)
 	lcd_reset();
 
     printf("%s %d\n", __FUNCTION__,__LINE__);
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_RESET_DONE, 0, 0, 0);
 
 	msleep(120);
 
 	init_index = st7789v2_select_init_from_panel();
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_PANEL_PROBE_DONE,
+		(unsigned int)st7789v2_detected_lcd_id,
+		(unsigned int)st7789v2_detected_aux_id,
+		(unsigned int)init_index);
 	st7789v2_apply_init_sequence(init_index);
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_INIT_SEQ_DONE,
+		(unsigned int)init_index, 0, 0);
 	st7789v2_restart_frame();
 	st7789v2_write_command(DISPON);
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_DISPON, (unsigned int)init_index, 0, 0);
 	st7789v2_detected_init = init_index;
 	printf("st7789v2 panel selected lcd_id=0x%06lx aux=0x%08lx init=%d\n",
 		st7789v2_detected_lcd_id, st7789v2_detected_aux_id,
@@ -661,6 +689,7 @@ static int st7789v2_display_init(void)
     else
         printf("%s %d\n", __FUNCTION__,__LINE__);
     lcd_pinmux_rgb(1);
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_RGB_ON, (unsigned int)init_index, 0, 0);
 	return 0;
 }
 
@@ -890,6 +919,7 @@ static int st7789v2_probe(const char *node)
 	if(np < 0){
 		goto error;
 	}
+	boot_trace_mark(BOOT_TRACE_SDK_LCD_PROBE_BEGIN, (unsigned int)np, 0, 0);
 
     control_state = fdt_get_property_pinmux(np, "control");
     rgb_state = fdt_get_property_pinmux(np, "rgb");
