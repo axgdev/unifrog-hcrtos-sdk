@@ -398,6 +398,7 @@ static const uint8_t st7789v2_init_dy12[] = { // XG-3.2LCD134-24PIN TN+film
 static const uint8_t st7789v2_init_sf2000[] = { // WL-28G105-A1 IPS
 	RGB_CLK_NORMAL, 1, SLPOUT, // sleep out
 	99, 2, MADCTL, 0x70, // memory data access control (alternate refresh order)
+	0, 2, TEON, 0x00, // drive tearing-effect/vsync output
 	0, 2, COLMOD, 0x55, // 16 bit / 65k of rgb
 	0, 4, 0xb1, 0x40, 0x04, 0x14, // RGBCTRL RGB Interface Control
 	0, 6, 0xb2, 0x0c, 0x0c, 0x00, 0x33, 0x33, // PORCTRL Porch Setting
@@ -626,8 +627,8 @@ static int st7789v2_display_init(void)
 
 	init_index = st7789v2_select_init_from_panel();
 	st7789v2_apply_init_sequence(init_index);
-	st7789v2_write_command(DISPON);
 	st7789v2_restart_frame();
+	st7789v2_write_command(DISPON);
 	st7789v2_detected_init = init_index;
 	printf("st7789v2 panel selected lcd_id=0x%06lx aux=0x%08lx init=%d\n",
 		st7789v2_detected_lcd_id, st7789v2_detected_aux_id,
@@ -654,12 +655,12 @@ static int st7789v2_display_init(void)
 
     printf("%s %d\n", __FUNCTION__,__LINE__);
 
-    lcd_pinmux_rgb(1);
     ret = gpio_irq_request(st7789v2dev.lcd_vsync_num, vsync_irq, (uint32_t)0x0); //param is not needed, but I dont know if I have to pass it.
     if (ret < 0)
         printf("st7789v2 vsync irq request ret=%d ignored\n", ret);
     else
         printf("%s %d\n", __FUNCTION__,__LINE__);
+    lcd_pinmux_rgb(1);
 	return 0;
 }
 
