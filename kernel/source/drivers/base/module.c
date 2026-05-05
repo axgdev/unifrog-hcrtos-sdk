@@ -10,6 +10,14 @@
 #include <kernel/vfs.h>
 #include <kernel/module.h>
 #include <kernel/elog.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+static unsigned int module_perf_ms(void)
+{
+	return (unsigned int)(((unsigned long long)xTaskGetTickCount() * 1000ull) /
+		(unsigned long long)configTICK_RATE_HZ);
+}
 
 int module_init2(const char *name, int n_exclude, char *excludes[])
 {
@@ -17,6 +25,11 @@ int module_init2(const char *name, int n_exclude, char *excludes[])
 	struct mod_init *mod_end = (struct mod_init *)&_module_init_end;
 	struct mod_init *p;
 	int i, res;
+	unsigned int group_start_ms;
+	unsigned int module_start_ms;
+	unsigned int module_done_ms;
+	unsigned int initialized_count = 0;
+	unsigned int skipped_count = 0;
 	bool group_init = true;
 	bool skip;
 
@@ -52,6 +65,7 @@ int module_init2(const char *name, int n_exclude, char *excludes[])
 	}
 
 	if (group_init) {
+		group_start_ms = module_perf_ms();
 		for (p = mod_start; p < mod_end; p++) {
 			skip = false;
 			for (i = 0; i < n_exclude; i++) {
@@ -62,20 +76,31 @@ int module_init2(const char *name, int n_exclude, char *excludes[])
 			}
 
 			if (skip || p->initialized == true) {
+				skipped_count++;
 				continue;
 			}
 
 			if (p->init) {
 				log_d("module init %s\n", p->name);
+				module_start_ms = module_perf_ms();
 				res = p->init();
+				module_done_ms = module_perf_ms();
+				printf("unifrog module_perf group=%s name=%s ret=%d ms=%u total_ms=%u\n",
+					name, p->name, res,
+					module_done_ms - module_start_ms,
+					module_done_ms - group_start_ms);
 				if (res) {
 					log_w("    --> init %s failed.\n", p->name);
 					return res;
 				}
 			}
 			p->initialized = true;
+			initialized_count++;
 		}
 
+		printf("unifrog module_perf group=%s done ret=0 modules=%u skipped=%u total_ms=%u\n",
+			name, initialized_count, skipped_count,
+			module_perf_ms() - group_start_ms);
 		return 0;
 	}
 
@@ -86,7 +111,11 @@ int module_init2(const char *name, int n_exclude, char *excludes[])
 			}
 			if (p->init) {
 				log_w("    --> init %s ...\n", p->name);
+				module_start_ms = module_perf_ms();
 				res = p->init();
+				module_done_ms = module_perf_ms();
+				printf("unifrog module_perf group=single name=%s ret=%d ms=%u\n",
+					p->name, res, module_done_ms - module_start_ms);
 				if (res) {
 					log_e("    --> init %s failed.\n", p->name);
 					return res;
