@@ -9,30 +9,63 @@ NM := $(CROSS_COMPILE)nm
 DTC ?= dtc
 SD_MODE ?= safe
 
-SD_MODES := safe wide uhs
+SD_MODES := safe hs1 wide50 wide uhs12 uhs25 uhs
 ifneq ($(filter $(SD_MODE),$(SD_MODES)),$(SD_MODE))
 $(error SD_MODE must be one of: $(SD_MODES))
 endif
 
+SD_CLOCK_FREQUENCY := 198000000
+SD_UHS_SDR12 := 0
+SD_UHS_SDR25 := 0
+SD_UHS_SDR50 := 0
+
 ifeq ($(SD_MODE),safe)
 SD_BUS_WIDTH := 1
 SD_CAP_HIGHSPEED := 0
-SD_CAP_UHS := 0
 SD_NO_1V8 := 1
 SD_EXPERIMENTAL := 0
+else ifeq ($(SD_MODE),hs1)
+SD_BUS_WIDTH := 1
+SD_CAP_HIGHSPEED := 1
+SD_NO_1V8 := 1
+SD_EXPERIMENTAL := 1
+else ifeq ($(SD_MODE),wide50)
+SD_BUS_WIDTH := 4
+SD_CAP_HIGHSPEED := 1
+SD_CLOCK_FREQUENCY := 50000000
+SD_NO_1V8 := 1
+SD_EXPERIMENTAL := 1
 else ifeq ($(SD_MODE),wide)
 SD_BUS_WIDTH := 4
 SD_CAP_HIGHSPEED := 1
-SD_CAP_UHS := 0
 SD_NO_1V8 := 1
+SD_EXPERIMENTAL := 1
+else ifeq ($(SD_MODE),uhs12)
+SD_BUS_WIDTH := 4
+SD_CAP_HIGHSPEED := 1
+SD_UHS_SDR12 := 1
+SD_CLOCK_FREQUENCY := 50000000
+SD_NO_1V8 := 0
+SD_EXPERIMENTAL := 1
+else ifeq ($(SD_MODE),uhs25)
+SD_BUS_WIDTH := 4
+SD_CAP_HIGHSPEED := 1
+SD_UHS_SDR12 := 1
+SD_UHS_SDR25 := 1
+SD_CLOCK_FREQUENCY := 99000000
+SD_NO_1V8 := 0
 SD_EXPERIMENTAL := 1
 else
 SD_BUS_WIDTH := 4
 SD_CAP_HIGHSPEED := 1
-SD_CAP_UHS := 1
+SD_UHS_SDR12 := 1
+SD_UHS_SDR25 := 1
+SD_UHS_SDR50 := 1
 SD_NO_1V8 := 0
 SD_EXPERIMENTAL := 1
 endif
+
+SD_CAP_UHS := $(if $(filter 1,$(SD_UHS_SDR12) $(SD_UHS_SDR25) $(SD_UHS_SDR50)),1,0)
 
 BUILD := build
 SOURCE := source
@@ -87,9 +120,13 @@ DTS_CPPFLAGS := \
 	-I$(DTS_INCLUDE) \
 	-I$(SOURCE)/include \
 	-I../include/hcrtos \
+	-DUNIFROG_SD_CLOCK_FREQUENCY=$(SD_CLOCK_FREQUENCY) \
 	-DUNIFROG_SD_BUS_WIDTH=$(SD_BUS_WIDTH) \
 	-DUNIFROG_SD_CAP_HIGHSPEED=$(SD_CAP_HIGHSPEED) \
 	-DUNIFROG_SD_CAP_UHS=$(SD_CAP_UHS) \
+	-DUNIFROG_SD_UHS_SDR12=$(SD_UHS_SDR12) \
+	-DUNIFROG_SD_UHS_SDR25=$(SD_UHS_SDR25) \
+	-DUNIFROG_SD_UHS_SDR50=$(SD_UHS_SDR50) \
 	-DUNIFROG_SD_NO_1V8=$(SD_NO_1V8) \
 	-nostdinc \
 	-undef \
@@ -150,9 +187,13 @@ $(DTS_MODE_STAMP): FORCE
 	@mkdir -p $(dir $@)
 	@value=$$(printf '%s\n' \
 		"SD_MODE=$(SD_MODE)" \
+		"SD_CLOCK_FREQUENCY=$(SD_CLOCK_FREQUENCY)" \
 		"SD_BUS_WIDTH=$(SD_BUS_WIDTH)" \
 		"SD_CAP_HIGHSPEED=$(SD_CAP_HIGHSPEED)" \
 		"SD_CAP_UHS=$(SD_CAP_UHS)" \
+		"SD_UHS_SDR12=$(SD_UHS_SDR12)" \
+		"SD_UHS_SDR25=$(SD_UHS_SDR25)" \
+		"SD_UHS_SDR50=$(SD_UHS_SDR50)" \
 		"SD_NO_1V8=$(SD_NO_1V8)"); \
 	old=$$(cat $@ 2>/dev/null || true); \
 	if test "$$value" != "$$old"; then printf '%s\n' "$$value" > $@; fi
