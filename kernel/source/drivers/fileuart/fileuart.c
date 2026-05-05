@@ -41,6 +41,7 @@ struct fileuart_dev
 	uint32_t tx_wt;
 	uint32_t tx_count;
 	uint32_t dirty_bytes;
+	uint32_t suspend_depth;
 	struct work_s work;
 	wait_queue_head_t wait;
 	SemaphoreHandle_t sem;
@@ -73,6 +74,8 @@ static void fileuart_close_log_locked(int clear_mount)
 
 static int fileuart_open_mounted_log_locked(void)
 {
+	if (g_dev.suspend_depth > 0)
+		return -EBUSY;
 	if (g_dev.fd >= 0)
 		return 0;
 	if (!g_dev.devname[0])
@@ -148,7 +151,8 @@ static void fileuart_flush_locked(void)
 
 static void fileuart_schedule_flush(void)
 {
-	if (g_dev.devname[0] && work_available(&g_dev.work))
+	if (g_dev.suspend_depth == 0 && g_dev.devname[0] &&
+	    work_available(&g_dev.work))
 		work_queue(LPWORK, &g_dev.work, fileuart_delayed_work, NULL,
 			FILEUART_FLUSH_DELAY_TICKS);
 }
@@ -203,10 +207,34 @@ static void fileuart_delayed_work(void *parameter)
 	int retry;
 
 	xSemaphoreTake(g_dev.sem, portMAX_DELAY);
-	fileuart_flush_locked();
-	retry = g_dev.tx_count > 0 && g_dev.devname[0];
+	if (g_dev.suspend_depth == 0)
+		fileuart_flush_locked();
+	retry = g_dev.suspend_depth == 0 && g_dev.tx_count > 0 &&
+		g_dev.devname[0];
 	xSemaphoreGive(g_dev.sem);
 	if (retry)
+		fileuart_schedule_flush();
+}
+
+void fileuart_set_storage_suspended(int suspended)
+{
+	int resume;
+
+	if (!g_dev.sem)
+		return;
+
+	xSemaphoreTake(g_dev.sem, portMAX_DELAY);
+	if (suspended) {
+		g_dev.suspend_depth++;
+		fileuart_close_log_locked(0);
+	} else if (g_dev.suspend_depth > 0) {
+		g_dev.suspend_depth--;
+	}
+	resume = g_dev.suspend_depth == 0 && g_dev.tx_count > 0 &&
+		g_dev.devname[0];
+	xSemaphoreGive(g_dev.sem);
+
+	if (resume)
 		fileuart_schedule_flush();
 }
 
