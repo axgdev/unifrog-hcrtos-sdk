@@ -7,12 +7,36 @@ LD := $(CROSS_COMPILE)ld
 AR := $(CROSS_COMPILE)ar
 NM := $(CROSS_COMPILE)nm
 DTC ?= dtc
+SD_MODE ?= uhs
+
+SD_MODES := safe wide uhs
+ifneq ($(filter $(SD_MODE),$(SD_MODES)),$(SD_MODE))
+$(error SD_MODE must be one of: $(SD_MODES))
+endif
+
+ifeq ($(SD_MODE),safe)
+SD_BUS_WIDTH := 1
+SD_CAP_HIGHSPEED := 0
+SD_CAP_UHS := 0
+SD_NO_1V8 := 1
+else ifeq ($(SD_MODE),wide)
+SD_BUS_WIDTH := 4
+SD_CAP_HIGHSPEED := 1
+SD_CAP_UHS := 0
+SD_NO_1V8 := 1
+else
+SD_BUS_WIDTH := 4
+SD_CAP_HIGHSPEED := 1
+SD_CAP_UHS := 1
+SD_NO_1V8 := 0
+endif
 
 BUILD := build
 SOURCE := source
 BOARD_DTS := ../board/hc15xx/common/dts/sf2000_min.dts
 DTS_PRE := $(BUILD)/sf2000_min.dts.tmp
 DTB := sf2000_min.dtb
+DTS_MODE_STAMP := $(BUILD)/sd-mode-$(SD_MODE).stamp
 KERNEL_ARCHIVE := ../lib/core/libkernel.a
 KERNEL_BUILTIN := $(BUILD)/built-in.o
 
@@ -57,6 +81,10 @@ CFLAGS := -EL $(ARCH_CFLAGS) -Os -msoft-float -fsigned-char -W \
 DTS_CPPFLAGS := \
 	-I$(SOURCE)/include \
 	-I../include/hcrtos \
+	-DUNIFROG_SD_BUS_WIDTH=$(SD_BUS_WIDTH) \
+	-DUNIFROG_SD_CAP_HIGHSPEED=$(SD_CAP_HIGHSPEED) \
+	-DUNIFROG_SD_CAP_UHS=$(SD_CAP_UHS) \
+	-DUNIFROG_SD_NO_1V8=$(SD_NO_1V8) \
 	-nostdinc \
 	-undef \
 	-D__ASSEMBLY__ \
@@ -112,7 +140,16 @@ $(BUILD)/%.o: $(SOURCE)/%.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -D__ASSEMBLY__ -MD -MP -c $< -o $@
 
-$(DTS_PRE): $(BOARD_DTS)
+$(DTS_MODE_STAMP):
+	@mkdir -p $(dir $@)
+	@printf '%s\n' \
+		"SD_MODE=$(SD_MODE)" \
+		"SD_BUS_WIDTH=$(SD_BUS_WIDTH)" \
+		"SD_CAP_HIGHSPEED=$(SD_CAP_HIGHSPEED)" \
+		"SD_CAP_UHS=$(SD_CAP_UHS)" \
+		"SD_NO_1V8=$(SD_NO_1V8)" > $@
+
+$(DTS_PRE): $(BOARD_DTS) $(DTS_MODE_STAMP)
 	@echo "  CPP     $<"
 	@mkdir -p $(dir $@)
 	$(CC) $(DTS_CPPFLAGS) -Wp,-MD,$@.d -E -o $@ $<

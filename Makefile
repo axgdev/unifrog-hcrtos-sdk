@@ -2,6 +2,7 @@ TOOLCHAIN ?= /opt/mipsel-mti-elf
 CROSS_COMPILE ?= $(TOOLCHAIN)/bin/mipsel-mti-elf-
 JOBS ?= 2
 CCACHE ?=
+SD_MODE ?= uhs
 OPEN_SOURCE_PATCHES := $(sort $(wildcard patches/open-source/*.patch))
 
 ifeq ($(filter -j% --jobs%,$(MAKEFLAGS)),)
@@ -39,10 +40,12 @@ kernel-check:
 	@$(MAKE) --no-print-directory apply-open-source-patches
 	@status=0; \
 	$(MAKE) -C kernel check TOOLCHAIN=$(TOOLCHAIN) \
-		CROSS_COMPILE=$(CROSS_COMPILE) CCACHE=$(CCACHE) JOBS=$(JOBS) || status=$$?; \
+		CROSS_COMPILE=$(CROSS_COMPILE) CCACHE=$(CCACHE) JOBS=$(JOBS) \
+		SD_MODE=$(SD_MODE) || status=$$?; \
 	$(MAKE) --no-print-directory unapply-open-source-patches; \
 	exit $$status
 
 clean:
 	$(MAKE) -C kernel clean TOOLCHAIN=$(TOOLCHAIN) \
-		CROSS_COMPILE=$(CROSS_COMPILE) CCACHE=$(CCACHE) JOBS=$(JOBS)
+		CROSS_COMPILE=$(CROSS_COMPILE) CCACHE=$(CCACHE) JOBS=$(JOBS) \
+		SD_MODE=$(SD_MODE)
