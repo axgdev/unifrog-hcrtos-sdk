@@ -23,6 +23,8 @@
 #include <nuttx/wqueue.h>
 
 #define CONFIG_FILEUART_TX_BUF_SIZE 65536
+#define FILEUART_FLUSH_DELAY_TICKS 100
+#define FILEUART_SYNC_INTERVAL_BYTES (64 * 1024)
 
 struct fileuart_dev
 {
@@ -32,6 +34,7 @@ struct fileuart_dev
 	uint32_t tx_rd;
 	uint32_t tx_wt;
 	uint32_t tx_count;
+	uint32_t dirty_bytes;
 	struct work_s work;
 	wait_queue_head_t wait;
 	SemaphoreHandle_t sem;
@@ -48,7 +51,31 @@ static int fileuart_open_log(const char *dev)
 
 	snprintf(log_file_path, sizeof(log_file_path), "/media/%s/log.txt", dev);
 
-	return open(log_file_path, flags);
+	return open(log_file_path, flags, 0666);
+}
+
+static void fileuart_close_log_locked(int clear_mount)
+{
+	if (g_dev.fd >= 0) {
+		close(g_dev.fd);
+		g_dev.fd = -1;
+	}
+	g_dev.dirty_bytes = 0;
+	if (clear_mount)
+		memset(g_dev.devname, 0, sizeof(g_dev.devname));
+}
+
+static int fileuart_open_mounted_log_locked(void)
+{
+	if (g_dev.fd >= 0)
+		return 0;
+	if (!g_dev.devname[0])
+		return -ENODEV;
+	g_dev.fd = fileuart_open_log(g_dev.devname);
+	if (g_dev.fd < 0)
+		return -errno;
+	g_dev.dirty_bytes = 0;
+	return 0;
 }
 
 static void fileuart_enqueue_byte(uint8_t ch)
@@ -77,8 +104,12 @@ static void fileuart_enqueue(const char *buf, size_t size)
 
 static void fileuart_flush_locked(void)
 {
+	if (g_dev.tx_count == 0 || fileuart_open_mounted_log_locked() != 0)
+		return;
+
 	while (g_dev.fd >= 0 && g_dev.tx_count > 0) {
 		uint32_t chunk;
+		ssize_t written;
 
 		if (g_dev.tx_rd < g_dev.tx_wt)
 			chunk = g_dev.tx_wt - g_dev.tx_rd;
@@ -88,72 +119,68 @@ static void fileuart_flush_locked(void)
 		if (chunk > g_dev.tx_count)
 			chunk = g_dev.tx_count;
 
-		write(g_dev.fd, g_dev.tx_buf + g_dev.tx_rd, chunk);
-		g_dev.tx_rd = (g_dev.tx_rd + chunk) % CONFIG_FILEUART_TX_BUF_SIZE;
-		g_dev.tx_count -= chunk;
+		written = write(g_dev.fd, g_dev.tx_buf + g_dev.tx_rd, chunk);
+		if (written <= 0) {
+			fileuart_close_log_locked(1);
+			return;
+		}
+		g_dev.tx_rd = (g_dev.tx_rd + (uint32_t)written) %
+			CONFIG_FILEUART_TX_BUF_SIZE;
+		g_dev.tx_count -= (uint32_t)written;
+		g_dev.dirty_bytes += (uint32_t)written;
+		if ((uint32_t)written < chunk)
+			break;
 	}
 
-	if (g_dev.fd >= 0)
-		fsync(g_dev.fd);
+	if (g_dev.fd >= 0 && g_dev.dirty_bytes >= FILEUART_SYNC_INTERVAL_BYTES) {
+		if (fsync(g_dev.fd) == 0)
+			g_dev.dirty_bytes = 0;
+		else
+			fileuart_close_log_locked(1);
+	}
 }
 
 static void fileuart_schedule_flush(void)
 {
-	if (g_dev.fd >= 0 && work_available(&g_dev.work))
-		work_queue(LPWORK, &g_dev.work, fileuart_delayed_work, NULL, 10);
+	if (g_dev.devname[0] && work_available(&g_dev.work))
+		work_queue(LPWORK, &g_dev.work, fileuart_delayed_work, NULL,
+			FILEUART_FLUSH_DELAY_TICKS);
+}
+
+static void fileuart_mount_locked(const char *dev)
+{
+	if (!dev || !dev[0])
+		return;
+	if (g_dev.devname[0] && strncmp(g_dev.devname, dev,
+	    sizeof(g_dev.devname)) != 0)
+		fileuart_close_log_locked(1);
+	snprintf(g_dev.devname, sizeof(g_dev.devname), "%s", dev);
+}
+
+static int fileuart_matches_mount_locked(const char *dev)
+{
+	if (!dev || !g_dev.devname[0])
+		return 0;
+	return strncmp(g_dev.devname, dev, sizeof(g_dev.devname)) == 0;
 }
 
 static int fileuart_fs_mount_notify(struct notifier_block *self, unsigned long action, void *dev)
 {
 	switch (action) {		
-	case USB_MSC_NOTIFY_MOUNT: {
+	case USB_MSC_NOTIFY_MOUNT:
+	case SDMMC_NOTIFY_MOUNT:
 		xSemaphoreTake(g_dev.sem, portMAX_DELAY);
-		if (g_dev.fd < 0) {
-			g_dev.fd = fileuart_open_log((char *)dev);
-			if (g_dev.fd >= 0) {
-				memcpy(g_dev.devname, dev, DISK_NAME_LEN);
-				fileuart_flush_locked();
-			}
-		}
+		fileuart_mount_locked((char *)dev);
+		xSemaphoreGive(g_dev.sem);
+		fileuart_schedule_flush();
+		break;
+	case USB_MSC_NOTIFY_UMOUNT:
+	case SDMMC_NOTIFY_UMOUNT:
+		xSemaphoreTake(g_dev.sem, portMAX_DELAY);
+		if (fileuart_matches_mount_locked((char *)dev))
+			fileuart_close_log_locked(1);
 		xSemaphoreGive(g_dev.sem);
 		break;
-	}
-	case USB_MSC_NOTIFY_UMOUNT: {
-		xSemaphoreTake(g_dev.sem, portMAX_DELAY);
-		if (g_dev.fd >= 0) {
-			if (!strncmp(g_dev.devname, dev, strlen(g_dev.devname))) {
-				close(g_dev.fd);
-				memset(g_dev.devname, 0, DISK_NAME_LEN);
-				g_dev.fd = -1;
-			}
-		}
-		xSemaphoreGive(g_dev.sem);
-		break;
-	}
-	case SDMMC_NOTIFY_MOUNT: {
-		xSemaphoreTake(g_dev.sem, portMAX_DELAY);
-		if (g_dev.fd < 0) {
-			g_dev.fd = fileuart_open_log((char *)dev);
-			if (g_dev.fd >= 0) {
-				memcpy(g_dev.devname, dev, DISK_NAME_LEN);
-				fileuart_flush_locked();
-			}
-		}
-		xSemaphoreGive(g_dev.sem);
-		break;
-	}
-	case SDMMC_NOTIFY_UMOUNT: {
-		xSemaphoreTake(g_dev.sem, portMAX_DELAY);
-		if (g_dev.fd >= 0) {
-			if (!strncmp(g_dev.devname, dev, strlen(g_dev.devname))) {
-				close(g_dev.fd);
-				memset(g_dev.devname, 0, DISK_NAME_LEN);
-				g_dev.fd = -1;
-			}
-		}
-		xSemaphoreGive(g_dev.sem);
-		break;
-	}
 	default:
 		break;
 	}
@@ -167,9 +194,14 @@ static struct notifier_block fileuart_fs_mount = {
 
 static void fileuart_delayed_work(void *parameter)
 {
+	int retry;
+
 	xSemaphoreTake(g_dev.sem, portMAX_DELAY);
 	fileuart_flush_locked();
+	retry = g_dev.tx_count > 0 && g_dev.devname[0];
 	xSemaphoreGive(g_dev.sem);
+	if (retry)
+		fileuart_schedule_flush();
 }
 
 static ssize_t fileuart_write(struct file *filep, const char *buf, size_t size)
