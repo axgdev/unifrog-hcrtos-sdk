@@ -1,0 +1,9 @@
+/build/
+/output/
+/lib/core/libkernel.a
+*.o
+*.d
+*.tmp
+*.dtb
+*~
+.DS_Store
