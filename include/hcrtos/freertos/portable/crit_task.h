@@ -132,10 +132,13 @@ extern void vTaskExitCritical( void );
 #endif
 
 /* To yield, we fire off a software interrupt, that will be handled by the
-relevant interrupt handler. */
+relevant interrupt handler.  Do not preserve stale exception Cause fields when
+setting SW0: the common handler tests ExcCode before dispatching interrupts. */
+#define portYIELD_CAUSE_STALE_EXCEPTION_BITS 0x8000007cUL
+
 #define portYIELD()                                                            \
 	do {                                                                   \
-		mips_biscr(SR_SINT0);                                          \
+		mips_bcscr(portYIELD_CAUSE_STALE_EXCEPTION_BITS, SR_SINT0);    \
 	} while (0)
 
 extern volatile UBaseType_t uxInterruptNesting;
@@ -148,4 +151,3 @@ extern volatile UBaseType_t uxInterruptNesting;
 #endif
 
 #endif	/* CRIT_SECT_H */
-
