@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: UniFrog Recovery <recovery@unifrog.local>
+Date: Fri, 22 May 2026 00:00:00 +0000
+Subject: [PATCH] freertos: disable HC16xx idle wait on SF2000
+
+UniFrog retained crashes have shown reserved-instruction exceptions from
+the FreeRTOS idle task while returning through the vendor display driver.
+The idle hook was entering the HC16xx low-power wait instruction after
+running registered callbacks. On SF2000/GB300 this path is not required
+for correctness and can fault while the UI/report paths are otherwise idle.
+
+Keep the idle hook as a callback runner and let the normal scheduler tick
+wake the system.
+---
+ kernel/source/freertos/portable/GCC/MIPS32_HC16xx/port.c | 12 +++---------
+ 1 file changed, 3 insertions(+), 9 deletions(-)
+
+diff --git a/kernel/source/freertos/portable/GCC/MIPS32_HC16xx/port.c b/kernel/source/freertos/portable/GCC/MIPS32_HC16xx/port.c
+index 0000000..0000000 100755
+--- a/kernel/source/freertos/portable/GCC/MIPS32_HC16xx/port.c
++++ b/kernel/source/freertos/portable/GCC/MIPS32_HC16xx/port.c
+@@ -241,16 +241,12 @@ void vApplicationIdleHook( void )
+ 		}
+ 	};
+ 
+-#ifdef CONFIG_SOC_HC16XX
++	/*
++	 * SF2000/GB300 does not need the HC16xx low-power wait path here; kept
++	 * enabled it can raise EXC_RI from prvIdleTask after display/UI work.
++	 */
++	return;
+ 
+-	if (get_processor_id() == 0)
+-		return;
+-
+-	 __asm__("	.set	push		\n"
+-		 "	.set	arch=r4000	\n"
+-		 "	wait			\n"
+-		 "	.set	pop 	\n");
+-#endif
+ }
+ 
+ BaseType_t xPortIsInISR(void)
+-- 
+2.45.0
