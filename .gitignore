@@ -1,6 +1,7 @@
 /build/
 /output/
 /lib/core/libkernel.a
+/kernel/build/
 *.o
 *.d
 *.tmp
