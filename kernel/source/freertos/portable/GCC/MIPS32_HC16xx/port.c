@@ -241,16 +241,12 @@ void vApplicationIdleHook( void )
 		}
 	};
 
-#ifdef CONFIG_SOC_HC16XX
+	/*
+	 * SF2000/GB300 does not need the HC16xx low-power wait path here; kept
+	 * enabled it can raise EXC_RI from prvIdleTask after display/UI work.
+	 */
+	return;
 
-	if (get_processor_id() == 0)
-		return;
-
-	 __asm__("	.set	push		\n"
-		 "	.set	arch=r4000	\n"
-		 "	wait			\n"
-		 "	.set	pop 	\n");
-#endif
 }
 
 BaseType_t xPortIsInISR(void)
