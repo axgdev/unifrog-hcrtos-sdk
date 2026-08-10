@@ -186,10 +186,23 @@ int hcge_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 	switch (cmd) {
 	case HCGE_REQUEST_IRQ:
 		if (!ge->irq_is_install) {
+			u32 status;
+
+			/*
+			 * The bootloader and a previous owner may leave a completion
+			 * latched in the GE status register.  Drop it before enabling
+			 * the interrupt; otherwise the newly installed handler can run
+			 * before the first command has been submitted.
+			 */
+			status = readl(ge->reg_base + 0x08);
+			if (status)
+				writel(status, ge->reg_base + 0x08);
+
 			HCGE_DBG("GE register IRQ\n");
-			xPortInterruptInstallISR((uint32_t)ge->irq, hc_ge_irq,
-						 (uint32_t)ge);
-			ge->irq_is_install = 1;
+			ret = xPortInterruptInstallISR((uint32_t)ge->irq, hc_ge_irq,
+						       (uint32_t)ge);
+			if (ret == 0)
+				ge->irq_is_install = true;
 		} else {
 			HCGE_DBG("GE IRQ already registered\n");
 		}
@@ -337,8 +350,13 @@ static int hcge_probe(const char *node)
 	ge->reg_base_phy = ge->reg_base;
 
 	ge->irq = (int)&GE_INTR;
-	xPortInterruptInstallISR((uint32_t)ge->irq, hc_ge_irq, (uint32_t)ge);
-	ge->irq_is_install = true;
+	/*
+	 * Do not install the ISR from probe.  xPortInterruptInstallISR enables
+	 * the source immediately, while the queue, lock, waitqueue and global
+	 * device pointer are still being initialized.  hcge_open() resets the
+	 * engine and requests the IRQ after all of that state is ready.
+	 */
+	ge->irq_is_install = false;
 
 	fdt_get_property_u_32_index(np, "cmdq_buf_size", 0,
 				    (u32 *)&ge->cmdq_buf_size);
