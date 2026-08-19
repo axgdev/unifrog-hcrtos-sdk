@@ -6,8 +6,10 @@ SD_MODE ?= safe
 BOARD_DTS ?= $(abspath ../board/hc15xx/common/dts/sf2000_min.dts)
 DTS_INCLUDE ?= $(abspath ../dts/include)
 
+ifeq ($(MAKELEVEL),0)
 ifeq ($(filter -j% --jobs%,$(MAKEFLAGS)),)
 MAKEFLAGS += -j$(JOBS)
+endif
 endif
 ifeq ($(filter --output-sync% -O%,$(MAKEFLAGS)),)
 MAKEFLAGS += --output-sync=target
