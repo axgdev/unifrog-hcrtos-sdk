@@ -19,6 +19,45 @@ static unsigned int module_perf_ms(void)
 		(unsigned long long)configTICK_RATE_HZ);
 }
 
+/* Keep module initialization visible in the retained UniFrog boot trace.
+ * The hook is weak because this SDK is also used by firmware that does not
+ * provide UniFrog's boot-trace runtime. Events 170 and 171 carry the module
+ * name in two four-byte ASCII fields and the module timestamp in arg0. */
+#define MODULE_TRACE_ENTER 170u
+#define MODULE_TRACE_DONE 171u
+
+extern void unifrog_boot_trace_mark(unsigned int event, unsigned int arg0,
+	unsigned int arg1, unsigned int arg2) __attribute__((weak));
+
+static void module_trace_name(const char *name, unsigned int *arg1,
+	unsigned int *arg2)
+{
+	unsigned int first = 0;
+	unsigned int second = 0;
+	int i;
+
+	if (!name)
+		name = "";
+	for (i = 0; i < 4 && name[i] != '\0'; i++)
+		first = (first << 8) | (unsigned char)name[i];
+	for (i = 0; i < 4 && name[i + 4] != '\0'; i++)
+		second = (second << 8) | (unsigned char)name[i + 4];
+	*arg1 = first;
+	*arg2 = second;
+}
+
+static void module_trace_mark(unsigned int event, unsigned int timestamp,
+	const char *name)
+{
+	unsigned int arg1;
+	unsigned int arg2;
+
+	if (!unifrog_boot_trace_mark)
+		return;
+	module_trace_name(name, &arg1, &arg2);
+	unifrog_boot_trace_mark(event, timestamp, arg1, arg2);
+}
+
 int module_init2(const char *name, int n_exclude, char *excludes[])
 {
 	struct mod_init *mod_start = (struct mod_init *)&_module_init_start;
@@ -83,8 +122,12 @@ int module_init2(const char *name, int n_exclude, char *excludes[])
 			if (p->init) {
 				log_d("module init %s\n", p->name);
 				module_start_ms = module_perf_ms();
+				module_trace_mark(MODULE_TRACE_ENTER, module_start_ms,
+					p->name);
 				res = p->init();
 				module_done_ms = module_perf_ms();
+				module_trace_mark(MODULE_TRACE_DONE, module_done_ms,
+					p->name);
 				printf("unifrog module_perf group=%s name=%s ret=%d ms=%u total_ms=%u\n",
 					name, p->name, res,
 					module_done_ms - module_start_ms,
@@ -112,8 +155,12 @@ int module_init2(const char *name, int n_exclude, char *excludes[])
 			if (p->init) {
 				log_w("    --> init %s ...\n", p->name);
 				module_start_ms = module_perf_ms();
+				module_trace_mark(MODULE_TRACE_ENTER, module_start_ms,
+					p->name);
 				res = p->init();
 				module_done_ms = module_perf_ms();
+				module_trace_mark(MODULE_TRACE_DONE, module_done_ms,
+					p->name);
 				printf("unifrog module_perf group=single name=%s ret=%d ms=%u\n",
 					p->name, res, module_done_ms - module_start_ms);
 				if (res) {
