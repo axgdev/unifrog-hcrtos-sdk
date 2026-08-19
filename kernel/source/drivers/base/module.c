@@ -34,14 +34,16 @@ static void module_trace_name(const char *name, unsigned int *arg1,
 {
 	unsigned int first = 0;
 	unsigned int second = 0;
-	int i;
+	unsigned int i;
 
 	if (!name)
 		name = "";
-	for (i = 0; i < 4 && name[i] != '\0'; i++)
-		first = (first << 8) | (unsigned char)name[i];
-	for (i = 0; i < 4 && name[i + 4] != '\0'; i++)
-		second = (second << 8) | (unsigned char)name[i + 4];
+	for (i = 0; i < 8 && name[i] != '\0'; i++) {
+		if (i < 4)
+			first = (first << 8) | (unsigned char)name[i];
+		else
+			second = (second << 8) | (unsigned char)name[i];
+	}
 	*arg1 = first;
 	*arg2 = second;
 }
