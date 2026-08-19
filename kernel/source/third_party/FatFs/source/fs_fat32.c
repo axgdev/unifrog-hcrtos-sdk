@@ -200,6 +200,10 @@ static int fatfs_errno(int result)
 
 static int fat_checkmount(struct fat_mountpt_s *fs)
 {
+	int errcode = -ENODEV;
+	struct geometry geo;
+	bool have_geo = false;
+
 	/* If the fs_mounted flag is false, then we have already handled the loss
 	 * of the mount.
 	 */
@@ -213,18 +217,34 @@ static int fat_checkmount(struct fat_mountpt_s *fs)
 			struct inode *inode = fs->blkdrv.fs_blkdriver;
 			if (inode && inode->u.i_bops &&
 					inode->u.i_bops->geometry) {
-				struct geometry geo;
-				int errcode =
-					inode->u.i_bops->geometry(inode, &geo);
-				if (errcode == OK && geo.geo_available &&
-						!geo.geo_mediachanged) {
-					return OK;
+				for (unsigned attempt = 0; attempt < 4; attempt++) {
+					memset(&geo, 0, sizeof(geo));
+					errcode = inode->u.i_bops->geometry(inode, &geo);
+					have_geo = errcode == OK;
+					if (have_geo && geo.geo_available &&
+							!geo.geo_mediachanged) {
+						if (attempt) {
+							log_e("unifrog fatfs geometry transient recovered attempt=%u sectors=%" PRId64 " size=%" PRId64 " writable=%d\n",
+								attempt + 1u, (int64_t)geo.geo_nsectors,
+								(int64_t)geo.geo_sectorsize,
+								geo.geo_writeenabled);
+						}
+						return OK;
+					}
+					usleep(10000);
 				}
 			}
 		}
 
 		/* If we get here, the mount is NOT healthy */
 
+		log_e("unifrog fatfs mount unhealthy err=%d have_geo=%d available=%d mediachanged=%d writable=%d sectors=%" PRId64 " size=%" PRId64 "\n",
+			errcode, have_geo ? 1 : 0,
+			have_geo ? geo.geo_available : 0,
+			have_geo ? geo.geo_mediachanged : 0,
+			have_geo ? geo.geo_writeenabled : 0,
+			have_geo ? (int64_t)geo.geo_nsectors : (int64_t)0,
+			have_geo ? (int64_t)geo.geo_sectorsize : (int64_t)0);
 		fs->fs_mounted = false;
 	}
 

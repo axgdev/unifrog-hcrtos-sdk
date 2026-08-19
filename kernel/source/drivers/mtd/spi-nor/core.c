@@ -3550,7 +3550,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		"mtd .name = %s, .size = 0x%llx (%lldMiB), "
 		".erasesize = 0x%.8x (%uKiB)\n",
 		"nor", (long long)mtd->size, (long long)(mtd->size >> 20),
-		mtd->erasesize, mtd->erasesize / 1024);
+		(unsigned int)mtd->erasesize,
+		(unsigned int)(mtd->erasesize / 1024));
 
 	return 0;
 }

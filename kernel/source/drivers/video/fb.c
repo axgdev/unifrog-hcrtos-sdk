@@ -6,6 +6,7 @@
 #include <kernel/io.h>
 #include <kernel/types.h>
 #include <nuttx/fs/fs.h>
+#include <freertos/task.h>
 #include "hcfb.h"
 
 static inline void unlock_fb_info(struct fb_info *info)
@@ -15,7 +16,15 @@ static inline void unlock_fb_info(struct fb_info *info)
 
 int lock_fb_info(struct fb_info *info)
 {
-	xSemaphoreTake(info->lock, portMAX_DELAY);
+	TickType_t wait = portMAX_DELAY;
+
+	if (!info || !info->lock)
+		return 0;
+
+	if (xTaskGetSchedulerState() == taskSCHEDULER_SUSPENDED)
+		wait = 0;
+
+	return xSemaphoreTake(info->lock, wait) == pdTRUE;
 }
 
 int
@@ -64,7 +73,8 @@ static int fb_open(struct file *filep)
 	inode = filep->f_inode;
 	info = (struct fb_info *)inode->i_private;
 
-	lock_fb_info(info);
+	if (!lock_fb_info(info))
+		return -EAGAIN;
 	if (info->fbops->fb_open) {
 		res = info->fbops->fb_open(info, 1);
 	}
@@ -80,10 +90,12 @@ static int fb_close(FAR struct file *filep)
 	inode = filep->f_inode;
 	info = (struct fb_info *)inode->i_private;
 
-	lock_fb_info(info);
+	if (!lock_fb_info(info))
+		return -EAGAIN;
 	if (info->fbops->fb_release)
 		info->fbops->fb_release(info, 1);
 	unlock_fb_info(info);
+	return 0;
 }
 
 static ssize_t fb_read(struct file *filep, char *buffer, size_t len)
@@ -294,53 +306,60 @@ static int fb_ioctl(struct file *filep, int cmd, unsigned long arg)
 	}
 
 	case FBIOBLANK: /* Blank or unblank video overlay */
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		if (info->fbops->fb_blank)
  			ret = info->fbops->fb_blank(arg, info);
 		unlock_fb_info(info);
 		break;
 
 	case FBIOPAN_DISPLAY:
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		ret = fb_pan_display(info, (struct fb_var_screeninfo *)arg);
 		unlock_fb_info(info);
 		break;
 
 	case FBIOGET_FSCREENINFO:
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		memcpy((struct fb_fix_screeninfo *)arg, &info->fix, sizeof(info->fix));
 		unlock_fb_info(info);
 		ret = 0;
 		break;
 
 	case FBIOGET_VSCREENINFO:
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		memcpy((struct fb_var_screeninfo *)arg, &info->var, sizeof(info->var));
 		unlock_fb_info(info);
 		ret = 0;
 		break;
 
 	case FBIOPUT_VSCREENINFO:
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		ret = fb_set_var(info, (struct fb_var_screeninfo *)arg);
 		unlock_fb_info(info);
 		break;
 
 	case FBIOPUTCMAP:
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		ret = fb_set_user_cmap((struct fb_cmap *)arg, info);
 		unlock_fb_info(info);
 		break;
 
 	case FBIOGETCMAP:
-		lock_fb_info(info);
+		if (!lock_fb_info(info))
+			return -EAGAIN;
 		ret = fb_cmap_to_user(&info->cmap, (struct fb_cmap *)arg);
 		unlock_fb_info(info);
 		break;
 
 	default:
 		if (!lock_fb_info(info))
-			return -ENODEV;
+			return -EAGAIN;
 		fb = info->fbops;
 		if (fb->fb_ioctl)
 			ret = fb->fb_ioctl(info, cmd, arg);

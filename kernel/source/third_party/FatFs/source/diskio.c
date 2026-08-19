@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <errno.h>
+#include <kernel/elog.h>
 
 #include "ff.h"			/* Obtains integer types */
 #include "diskio.h"		/* Declarations of disk functions */
@@ -129,8 +131,13 @@ DRESULT disk_read (
 
 		seekpos = lseek(blkdrv->fs_fd, fpos, SEEK_SET);
 		if (seekpos == (off_t)-1) {
+			log_e("unifrog fatfs disk_read lseek_failed pdrv=%u sector=%lu count=%u errno=%d\n",
+				pdrv, (unsigned long)sector, count, errno);
 			return RES_ERROR;
 		} else if (seekpos != fpos) {
+			log_e("unifrog fatfs disk_read short_seek pdrv=%u sector=%lu count=%u want=%ld got=%ld\n",
+				pdrv, (unsigned long)sector, count, (long)fpos,
+				(long)seekpos);
 			return RES_ERROR;
 		}
 
@@ -138,8 +145,13 @@ DRESULT disk_read (
 
 		nread = read(blkdrv->fs_fd, buff, count << blkdrv->fs_hwsectshift);
 		if (nread < 0) {
+			log_e("unifrog fatfs disk_read fd_failed pdrv=%u sector=%lu count=%u errno=%d\n",
+				pdrv, (unsigned long)sector, count, errno);
 			return RES_ERROR;
 		} else if (nread != (ssize_t)(count << blkdrv->fs_hwsectshift)) {
+			log_e("unifrog fatfs disk_read fd_short pdrv=%u sector=%lu count=%u got=%ld want=%ld\n",
+				pdrv, (unsigned long)sector, count, (long)nread,
+				(long)(count << blkdrv->fs_hwsectshift));
 			return RES_ERROR;
 		}
 
@@ -151,9 +163,14 @@ DRESULT disk_read (
 			if (nsectorsread == (ssize_t)count) {
 				return RES_OK;
 			}
+			log_e("unifrog fatfs disk_read block_failed pdrv=%u sector=%lu count=%u got=%ld inode=%p\n",
+				pdrv, (unsigned long)sector, count, (long)nsectorsread,
+				inode);
 		}
 	}
 
+	log_e("unifrog fatfs disk_read parerr pdrv=%u sector=%lu count=%u blkdrv=%p\n",
+		pdrv, (unsigned long)sector, count, blkdrv);
 	return RES_PARERR;
 }
 
@@ -188,8 +205,13 @@ DRESULT disk_write (
 
 		seekpos = lseek(blkdrv->fs_fd, fpos, SEEK_SET);
 		if (seekpos == (off_t)-1) {
+			log_e("unifrog fatfs disk_write lseek_failed pdrv=%u sector=%lu count=%u errno=%d\n",
+				pdrv, (unsigned long)sector, count, errno);
 			return RES_ERROR;
 		} else if (seekpos != fpos) {
+			log_e("unifrog fatfs disk_write short_seek pdrv=%u sector=%lu count=%u want=%ld got=%ld\n",
+				pdrv, (unsigned long)sector, count, (long)fpos,
+				(long)seekpos);
 			return RES_ERROR;
 		}
 
@@ -197,8 +219,13 @@ DRESULT disk_write (
 
 		nwritten = write(blkdrv->fs_fd, buff, count << blkdrv->fs_hwsectshift);
 		if (nwritten < 0) {
+			log_e("unifrog fatfs disk_write fd_failed pdrv=%u sector=%lu count=%u errno=%d\n",
+				pdrv, (unsigned long)sector, count, errno);
 			return RES_ERROR;
 		} else if (nwritten != (ssize_t)(count << blkdrv->fs_hwsectshift)) {
+			log_e("unifrog fatfs disk_write fd_short pdrv=%u sector=%lu count=%u got=%ld want=%ld\n",
+				pdrv, (unsigned long)sector, count, (long)nwritten,
+				(long)(count << blkdrv->fs_hwsectshift));
 			return RES_ERROR;
 		}
 
@@ -210,9 +237,14 @@ DRESULT disk_write (
 			if (nsectorswritten == (ssize_t)count) {
 				return RES_OK;
 			}
+			log_e("unifrog fatfs disk_write block_failed pdrv=%u sector=%lu count=%u got=%ld inode=%p\n",
+				pdrv, (unsigned long)sector, count,
+				(long)nsectorswritten, inode);
 		}
 	}
 
+	log_e("unifrog fatfs disk_write parerr pdrv=%u sector=%lu count=%u blkdrv=%p\n",
+		pdrv, (unsigned long)sector, count, blkdrv);
 	return RES_PARERR;
 }
 
